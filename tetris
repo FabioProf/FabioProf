@@ -1,0 +1,250 @@
+#include <LiquidCrystal.h>
+
+// Configuração do display LCD
+const int rs = 12;
+const int enable = 11;
+const int d4 = 5;
+const int d5 = 4;
+const int d6 = 3;
+const int d7 = 2;
+LiquidCrystal lcd(rs, enable, d4, d5, d6, d7);
+
+// Configuração dos pinos do joystick e botão de reinício
+// Variáveis de controle do joystick e botões
+const int joystickXPin = A0;
+const int joystickYPin = A1;
+const int joystickButtonPin = 7;
+const int buttonPin = 10;
+const int restartButtonPin = 8;
+
+// Variável para controlar o estado anterior do botão do joystick
+bool prevButtonState = false;
+
+// Configuração do campo de jogo
+const int fieldWidth = 10;
+const int fieldHeight = 16;
+
+bool field[fieldWidth][fieldHeight];
+bool pieces[7][4][4] = {
+  {
+    {0, 0, 0, 0},
+    {1, 1, 1, 1},
+    {0, 0, 0, 0},
+    {0, 0, 0, 0}
+  },
+  // Outras peças
+};
+
+int pieceWidth[7] = {4};
+int pieceHeight[7] = {4};
+
+int currentPieceType;
+int currentPieceWidth;
+int currentPieceHeight;
+int currentPieceX;
+int currentPieceY;
+bool gameOver = false;
+
+unsigned long lastUpdateTime = 0;
+const unsigned long updateInterval = 500;
+
+void setup() {
+  lcd.begin(20, 4);
+
+  pinMode(joystickButtonPin, INPUT_PULLUP);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(restartButtonPin, INPUT_PULLUP);
+
+  randomSeed(analogRead(0));
+
+  lcd.clear();
+  lcd.print("Tetris");
+
+  delay(2000);
+
+  lcd.clear();
+
+  newPiece();
+}
+
+void checkPlayerInput() {
+  int xValue = analogRead(joystickXPin);
+  int yValue = analogRead(joystickYPin);
+  int buttonValue = digitalRead(joystickButtonPin);
+
+  if (xValue < 100) {
+    if (canMove(-1, 0)) {
+      currentPieceX--;
+    }
+  } else if (xValue > 900) {
+    if (canMove(1, 0)) {
+      currentPieceX++;
+    }
+  }
+
+  if (buttonValue == LOW && !prevButtonState) {
+    rotatePiece();
+    prevButtonState = true;
+  } else if (buttonValue == HIGH) {
+    prevButtonState = false;
+  }
+
+  if (digitalRead(buttonPin) == LOW) {
+    if (canMove(0, 1)) {
+      currentPieceY++;
+    }
+  }
+}
+
+void lockPiece() {
+  for (int px = 0; px < currentPieceWidth; px++) {
+    for (int py = 0; py < currentPieceHeight; py++) {
+      if (pieces[currentPieceType][py][px]) {
+        field[currentPieceX + px][currentPieceY + py] = true;
+      }
+    }
+  }
+
+  clearLines();
+
+  newPiece();
+}
+
+void newPiece() {
+  currentPieceType = random(7);
+  currentPieceWidth = pieceWidth[currentPieceType];
+  currentPieceHeight = pieceHeight[currentPieceType];
+  currentPieceX = fieldWidth / 2 - currentPieceWidth / 2;
+  currentPieceY = 0;
+
+  if (!canMove(0, 0)) {
+    gameOver = true;
+  }
+}
+
+bool canMove(int dx, int dy) {
+  for (int px = 0; px < currentPieceWidth; px++) {
+    for (int py = 0; py < currentPieceHeight; py++) {
+      int x = currentPieceX + px + dx;
+      int y = currentPieceY + py + dy;
+
+      if (x < 0 || x >= fieldWidth || y >= fieldHeight) {
+        if (pieces[currentPieceType][py][px]) {
+          return false;
+        }
+      }
+
+      if (y >= 0 && pieces[currentPieceType][py][px] && field[x][y]) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+void rotatePiece() {
+  int nextPieceType = (currentPieceType + 1) % 7;
+  int nextPieceWidth = pieceWidth[nextPieceType];
+  int nextPieceHeight = pieceHeight[nextPieceType];
+
+  int nextPieceX = currentPieceX + (currentPieceWidth - nextPieceWidth) / 2;
+  int nextPieceY = currentPieceY + (currentPieceHeight - nextPieceHeight) / 2;
+
+  if (canMove(0, 0, nextPieceX, nextPieceY, nextPieceWidth, nextPieceHeight)) {
+    currentPieceType = nextPieceType;
+    currentPieceWidth = nextPieceWidth;
+    currentPieceHeight = nextPieceHeight;
+    currentPieceX = nextPieceX;
+    currentPieceY = nextPieceY;
+  }
+}
+
+void clearLines() {
+  for (int y = fieldHeight - 1; y >= 0; y--) {
+    bool lineIsFull = true;
+
+    for (int x = 0; x < fieldWidth; x++) {
+      if (!field[x][y]) {
+        lineIsFull = false;
+        break;
+      }
+    }
+
+    if (lineIsFull) {
+      for (int yy = y; yy > 0; yy--) {
+        for (int x = 0; x < fieldWidth; x++) {
+          field[x][yy] = field[x][yy - 1];
+        }
+      }
+    }
+  }
+}
+
+void drawField() {
+  for (int x = 0; x < fieldWidth; x++) {
+    for (int y = 0; y < fieldHeight; y++) {
+      lcd.setCursor(x, y);
+      if (field[x][y]) {
+        lcd.write(byte(255));
+      } else {
+        lcd.write(' ');
+      }
+    }
+  }
+}
+
+void drawPiece() {
+  for (int px = 0; px < currentPieceWidth; px++) {
+    for (int py = 0; py < currentPieceHeight; py++) {
+      if (pieces[currentPieceType][py][px]) {
+        lcd.setCursor(currentPieceX + px, currentPieceY + py);
+        lcd.write(byte(255));
+      }
+    }
+  }
+}
+
+void drawGameOver() {
+  lcd.clear();
+  lcd.setCursor(0, 1);
+  lcd.print("Game Over!");
+}
+
+void restartGame() {
+  for (int x = 0; x < fieldWidth; x++) {
+    for (int y = 0; y < fieldHeight; y++) {
+      field[x][y] = false;
+    }
+  }
+
+  gameOver = false;
+  newPiece();
+}
+
+void loop() {
+  if (gameOver) {
+    drawGameOver();
+    if (digitalRead(restartButtonPin) == LOW) {
+      restartGame();
+    }
+    return;
+  }
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastUpdateTime >= updateInterval) {
+    lastUpdateTime = currentTime;
+
+    if (canMove(0, 1)) {
+      currentPieceY++;
+    } else {
+      lockPiece();
+    }
+  }
+
+  checkPlayerInput();
+
+  lcd.clear();
+  drawField();
+  drawPiece();
+}
